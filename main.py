@@ -1,19 +1,28 @@
+from logging import Logger
 import yfinance as yf
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-
-nas = yf.Ticker('nas.ol')
-msft = yf.Ticker('msft')
+import get_tickers as gt
+import logging
+import test
+from enum import Enum, auto
 
 app = FastAPI()
+tickers = gt.get_tickers()
+logger = logging.getLogger(__name__)
 
 origins = [
-    "http://localhost.tiangolo.com",
-    "https://localhost.tiangolo.com",
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:8080",
+    "*"
 ]
+
+class Exchange(Enum):
+    OSLO = "OSLO"
+
+stock_infos = []
+
+async def update_stock_info():
+    global stock_infos
+    stock_infos = await test.main(stock_infos)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,10 +32,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get('/')
+@app.get('/run-update/')
+async def run_update(backgroundtask: BackgroundTasks):
+    backgroundtask.add_task(update_stock_info)
+    return 'started update'
+
+@app.get('/stocks-meta/')
+async def stocks_meta(exchange: Exchange):
+    if exchange == Exchange.OSLO:
+        return stock_infos
+
+    raise HTTPException(400, "no data for this exchange")
+
+@app.get('/dividends/')
 async def div(symbol: str):
     return yf.Ticker(symbol).dividends
-
 
 if __name__ == "__main__":
     import uvicorn
